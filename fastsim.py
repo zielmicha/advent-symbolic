@@ -1,4 +1,4 @@
-import z3, sys, random
+import z3, sys, random, time
 from collections import defaultdict
 
 rand = random.Random(42)
@@ -66,17 +66,22 @@ def run(lines, limit):
         if data[ip] >= len(lines): break
 
 def minimize(func, l=0, u=10**9):
+    start = time.time()
     k = z3.Int('k')
+    s = z3.Solver()
+    func(s, k)
 
     while l + 1 != u:
         m = (l + u) // 2
-        s = z3.Solver()
-        func(s, k)
+        s.push()
         s.add(k <= m)
         if s.check() == z3.sat:
             u = m
         else:
             l = m
+        s.pop()
+
+    #print(time.time() - start, 's')
 
     return u
 
@@ -105,6 +110,7 @@ class Pattern:
             return tuple( m[v] for v in x_vars )
 
     def use(self, data):
+        print('use...'); start = time.time()
         vars = self.matches(data)
         vars = [ (666 if v is None else v) for v in vars ]
         print(data, vars, self.start)
@@ -121,6 +127,7 @@ class Pattern:
         new_vars = [ v + k*s for v, s in zip(vars, self.shift) ]
         new_data = subs(self.start, new_vars)
 
+        print('done', (time.time() - start)*1000)
         return new_data
 
     def __hash__(self):
@@ -138,7 +145,6 @@ def find_shifted(conds, states):
             if r1 == r2 or r1[ip] != r2[ip]: continue
             s = z3.Solver()
             s.add(conds)
-            #print(s1, s2)
             r = [
                 (s1[i] - s2[i]) == (r1[i] - r2[i])
                 for i in range(len(s1))
@@ -149,9 +155,10 @@ def find_shifted(conds, states):
                                z3.simplify(z3.And(*conds)),
                                tuple( a2-a1 for (a1,a2) in zip(r1,r2) ))
 
-patterns = set()#defaultdict(set)
+patterns = defaultdict(set)
 
 def symbolic_run(lines, data):
+    print('Running symbolically')
     data = list(data)
     sym_data = list(x_vars)
     sym_data[ip] = data[ip]
@@ -178,13 +185,14 @@ def symbolic_run(lines, data):
 
         r = find_shifted(conds, states)
         if r:
-            patterns.add(r)
+            patterns[pc].add(r)
             break
 
         if data[ip] >= len(lines): break
 
 def fast_run(lines, data, limit):
     counter = 0
+    just_jumped = False
 
     for i in range(limit):
         pc = data[ip]
@@ -192,18 +200,24 @@ def fast_run(lines, data, limit):
         if pc >= len(lines): break
 
         matched = None
-        if random.randrange(1) == 0:
-            matched = [ p for p in patterns if p.matches(data) ]
+        if not just_jumped and random.randrange(1) == 0:
+            matched = [ p for p in patterns[data[ip]] if p.matches(data) ]
+
+        just_jumped = False
+
         if matched:
             p = matched[0]
             res = p.use(data)
             #print(data, '->', res)
             if res:
                 data = res
+                just_jumped = True
                 continue
+            else:
+                print('usage failed')
 
         simulate(lines[pc], data)
-        #print(lines[pc], data)
+        print(lines[pc], data)
 
         if data[ip] >= len(lines): break
 
@@ -217,10 +231,12 @@ def execute():
     data = [0]*6
     data[0] = 0
     for i in range(2000):
+        if data[ip] >= len(lines): break
+
+        print('Data:', data)
+        print('Patterns:',patterns)
+
         symbolic_run(lines, data)
-        print(data)
-        print('patterns (%d):' % len(patterns))
-        for p in patterns: print(p)
         data = fast_run(lines, data, limit=200)
 
     print(data)
