@@ -5,12 +5,16 @@ rand = random.Random(42)
 simple_instrs = ['addi', 'muli', 'bani', 'bori', 'seti', 'addr', 'mulr', 'banr', 'borr', 'setr']
 x_vars = tuple( z3.Int('x%d' % i) for i in range(6) )
 
+class SymbolicExecutionImpossible(Exception): pass
+
 def sim_helper(name, a, b):
     if name == 'add': return a + b
     if name == 'mul': return a * b
+    if name == 'set': return a
+
+    if type(a) != int or type(b) != int: raise SymbolicExecutionImpossible()
     if name == 'ban': return a & b
     if name == 'bor': return a | b
-    if name == 'set': return a
     assert False
 
 def sim_value(name, data, a, b):
@@ -68,18 +72,18 @@ def run(lines, limit):
 def minimize(func, l=0, u=10**9):
     start = time.time()
     k = z3.Int('k')
-    s = z3.Solver()
-    func(s, k)
 
     while l + 1 != u:
         m = (l + u) // 2
-        s.push()
+        #s.push()
+        s = z3.Solver()
+        func(s, k)
         s.add(k <= m)
         if s.check() == z3.sat:
             u = m
         else:
             l = m
-        s.pop()
+        #s.pop()
 
     #print(time.time() - start, 's')
 
@@ -174,7 +178,10 @@ def symbolic_run(lines, data):
 
         print(lines[pc], sym_data)
         simulate(lines[pc], data)
-        simulate(lines[pc], sym_data)
+        try:
+            simulate(lines[pc], sym_data)
+        except SymbolicExecutionImpossible:
+            break
 
         states.append((tuple(sym_data), tuple(data)))
 
@@ -229,7 +236,7 @@ lines = sys.stdin.read().splitlines()
 
 def execute():
     data = [0]*6
-    data[0] = 0
+    data[0] = 6534225
     for i in range(2000):
         if data[ip] >= len(lines): break
 
